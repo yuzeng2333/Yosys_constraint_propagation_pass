@@ -1,0 +1,6 @@
+read_verilog test.v
+
+prep -top test
+hierarchy -check
+proc
+write_json test_opt.json
