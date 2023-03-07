@@ -39,11 +39,24 @@ PRIVATE_NAMESPACE_BEGIN
 
 std::queue<std::pair<RTLIL::SigSpec, uint32_t>> g_work_list;
 
+void print_cell(RTLIL::Cell* cell) {
+  std::cout << "cell: " << cell->name.str() << std::endl;
+}
+
+void print_sigspec(RTLIL::SigSpec connSig) {
+  if(connSig.is_wire()) {
+    auto wire = connSig.as_wire();
+    std::cout << "wire: " << wire->name.str() << std::endl;
+  }
+}
+
+
 // Recursively propagate constraints through the design
 void propagate_constraints(Design* design, RTLIL::Module* module, 
                            RTLIL::SigSpec ctdSig, uint32_t forbidValue=0)
 {
-    for(auto &conn : module->connections_) {
+    // traverse all connections
+    for(auto &conn : module->connections()) {
       auto srcSig = conn.first;
       //RTLIL::IdString srcName = srcSig.as_wire()->name;
       if(ctdSig != srcSig) continue;
@@ -51,14 +64,25 @@ void propagate_constraints(Design* design, RTLIL::Module* module,
       if(dstSig.is_wire()) {
         g_work_list.push(std::make_pair(dstSig, forbidValue));
       }
-      
+    }
+
+    // traverse all cells
+    for(auto cellPair : module->cells_) {
+      RTLIL::IdString IdStr = cellPair.first;
+      RTLIL::Cell* cell = cellPair.second;
+      print_cell(cell);
+      for(auto &conn: cell->connections_) {
+        RTLIL::IdString id = conn.first;
+        RTLIL::SigSpec connSig = conn.second;
+        print_sigspec(connSig);
+      }
     }
 }
 
 struct ConstraintPropagatePass : public Pass {
     ConstraintPropagatePass() : Pass("opt_ctrt", "constraint propagation pass") { }
     void execute(std::vector<std::string>, Design* design) override { 
-        log_header(design, "Executing OPT_CONSTRAINT pass");
+        log_header(design, "Executing the new OPT_CONSTRAINT pass");
         // Iterate through all modules in the design
         for (auto module : design->modules())
         {
