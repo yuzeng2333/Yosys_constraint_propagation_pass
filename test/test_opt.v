@@ -26,4 +26,5 @@ module test(clock, reset, io_x, io_y, io_opcode, io_result);
   assign _GEN_0 = _T_5 ? _T_6 : _T_8;
   assign _GEN_1 = _T_3 ? _T_4 : _GEN_0;
   assign io_result = _T ? _T_2 : _GEN_1;
+  assign _T = 1'h0;
 endmodule
