@@ -110,7 +110,8 @@ void propagate_constraints(Design* design, RTLIL::Module* module,
       }
       // replace the eq with constant false
       if(use_ctrd_sig && use_forbid_value) {
-        //cell->connections_.erase(outputPort);
+        module->remove(cell);
+        //cell->connections_[outputPort] = RTLIL::SigSpec();
         // connect the output wire to always false
         module->connect(outputWire, RTLIL::SigSpec(false));
       }
