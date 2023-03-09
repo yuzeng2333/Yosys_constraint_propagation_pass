@@ -140,17 +140,9 @@ void add_and(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module
   }
   if(const_arg) {
     assert(equal_width(ctrdSig, outputConnSig));
-    std::string ctrdName = get_hier_name(ctrdSig);
-    std::string outSigName = get_hier_name(outputConnSig);
-    for(int i = 0; i < ctrdSig.width; i++) {
-      expr outBit = c.bool_const(outSigName + ".bit" + toStr(i));
-      bool constBit = get_bit(const_value, i);
-      std::string inBitName = ctrdName+ ".bit" + toStr(i);
-      assert(g_expr_map.find(inBitName) != g_expr_map.end());
-      expr inBit = g_expr_map[inBitName];
-      expr and_expr = outBit == inBit & constBit;
-      s.add(and_expr);
-    }
+    expr ctrdExpr = get_hier_name(ctrdSig);
+    expr outExpr = get_hier_name(outputConnSig);
+    s.add(ctrdExpr & const_value == outExpr);
   }
 }
 

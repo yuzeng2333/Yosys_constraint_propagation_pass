@@ -19,8 +19,12 @@ add_compile_definitions(
 )
 set(YOSYS_LIBS -lstdc++ -lm -lrt -lreadline -lffi -ldl -lz -ltcl8.6 -ltclstub8.6)
 
-aux_source_directory(./src SRC_DIR)
+# z3
+#find_package (Z3 4.8 REQUIRED)
+include_directories(/home/yuzeng/workspace/tools/z3/src/api/c++)
 
+# source code
+aux_source_directory(./src SRC_DIR)
 set(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g")
@@ -30,6 +34,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g")
 add_library(${PROJECT_NAME} SHARED ${SRC_DIR})
 
 target_link_libraries(${PROJECT_NAME} ${YOSYS_LIBS})
+target_link_libraries(${PROJECT_NAME} /home/yuzeng/workspace/tools/z3/build/libz3.so)
 
 # Add tags target 
 set_source_files_properties(tags PROPERTIES GENERATED true)

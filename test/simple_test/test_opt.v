@@ -20,7 +20,6 @@ module test(clock, reset, io_x, io_y, io_opcode, io_result);
   assign _T_4 = io_x & io_y;
   assign _T_3 = io_opcode == 2'h2;
   assign _T_5 = io_opcode == 2'h3;
-  assign _T = io_opcode == 1'h1;
   assign _T_6 = io_x | io_y;
   assign _T_8 = io_x - io_y;
   assign _GEN_0 = _T_5 ? _T_6 : _T_8;
