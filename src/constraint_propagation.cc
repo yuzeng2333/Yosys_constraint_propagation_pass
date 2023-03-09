@@ -59,10 +59,16 @@ struct CheckSet {
 };
 
 
+struct DestGroup {
+  std::set<RTLIL::SigSpec> wires;
+  std::set<std::pair<RTLIL:Cell*, RTLIL::SigSpec>> cellPorts;
+};
+
 std::queue<WorkItem> g_work_list;
 std::vector<RTLIL::Cell*> g_cell_stack;
 std::set<CheckSet> g_check_set;
 std::map<std::string, expr> g_expr_map;
+typedef std::map<RTLIL::SigSpec, DestGroup> DriveMap_t;
 
 void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
   std::string path = get_path();

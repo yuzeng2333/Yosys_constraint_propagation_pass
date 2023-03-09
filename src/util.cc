@@ -123,10 +123,13 @@ std::string get_path(const std::vector<RTLIL::Cell*> &cell_stack = g_cell_stack)
 
 
 std::string get_hier_name(RTLIL::SigSpec inputSig) {
-  assert(!inputSig.is_chunk());
   assert(!inputSig.is_bit());
   std::string path = get_path();
-  auto wireName = inputSig.as_wire()->name.str();
+  auto wireName;
+  if(inputSig.is_wire())
+    wireName = inputSig.as_wire()->name.str();
+  else if(inputSig.is_chunk()) 
+    wireName = inputSig.as_chunk()->name.str();
   return path + "." + wireName;
 }
 
@@ -139,6 +142,22 @@ bool get_bit(uint32_t value, uint32_t pos) {
 
 
 void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
+  assert(complete_signal(inputSig));
+  std::string inputName = get_hier_name(inputSig);
+  int width = inputSig.width_;
+  expr inputExpr;
+  if(g_expr_map.find(inputName) != g_expr_map.end()) {
+    inputExpr = g_expr_map[inputName];
+  }
+  else {
+    inputExpr = c.bv_const(inputName, width);
+  }
+  expr neq = inputExpr != forbidValue;
+  s.add(neq);
+}
+
+
+void add_neq_bits_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
   inputSig.unpack();
   int pos = 0;
   std::string inputName = get_hier_name(inputSig);
@@ -158,7 +177,6 @@ void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbi
   }
   s.add(disjunct);
 }
-
 
 
 void traverse(Design* design, RTLIL::Module* module)
@@ -181,4 +199,33 @@ void traverse(Design* design, RTLIL::Module* module)
         print_sigspec(connSig);
       }
     }
+}
+
+
+expr get_expr(Context &c, RTLIL::SigSpec sig) {
+  int width = sig.width_;
+  std::string name = get_hier_name(sig);  
+  if(sig.is_wire()) {
+    if(g_expr_map.find(name) != g_expr_map.end())
+      return g_expr_map[name];
+    else {
+      expr ret = c.bv_const(name, width);
+      g_expr_map.emplace(name, ret);
+      return ret;
+    }
+  }
+  else if(sig.is_chunk()) {
+    auto chunk = sig.as_chunk();
+    int offset = chunk.offset;
+    if(g_expr_map.find(name) != g_expr_map.end()) {
+      expr completeExpr = g_expr_map[name];
+      return completeExpr.extract(width+offset-1, offset);
+    }
+    else {
+      int fullWidth = sig->wire->width;
+      expr ret = c.bv_const(name, fullWidth);
+      g_expr_map.emplace(name, ret);
+      return ret.extract(width+offset-1, offset);
+    }
+  }
 }
