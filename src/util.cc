@@ -1,0 +1,184 @@
+#include "kernel/register.h"
+#include "kernel/celltypes.h"
+#include "kernel/log.h"
+#include "kernel/sigtools.h"
+#include "kernel/ff.h"
+#include "kernel/mem.h"
+#include "kernel/rtlil.h"
+#include <string>
+#include <sstream>
+#include <set>
+#include <map>
+#include <vector>
+#include <queue>
+#include <assert.h>
+#include <z3++.h>
+
+using namespace z3;
+
+/// utils
+std::string toStr(int i) {
+  return std::to_string(i);
+}
+
+
+void print_cell(RTLIL::Cell* cell) {
+  std::cout << "cell name: " << cell->name.str() << std::endl;
+  std::cout << "cell type: " << cell->type.str() << std::endl;
+}
+
+void print_sigspec(RTLIL::SigSpec connSig) {
+  if(connSig.is_wire()) {
+    auto wire = connSig.as_wire();
+    std::string wireName = wire->name.str();
+    if(wireName == "\\io_opcode") std::cout << "find io_opcode" << std::endl;
+    std::cout << "wire: " << wireName << std::endl;
+  }
+  else if(connSig.is_fully_const()) {
+    std::cout << "const: " << connSig.as_int() << std::endl;    
+  }
+}
+
+void print_IdString(RTLIL::IdString id) {
+  std::cout << "IdString: " << id.str() << std::endl;
+}
+
+void print_module(RTLIL::Module *module) {
+  std::cout << "module: " << module->name.str() << std::endl;
+}
+
+
+bool cell_is_module(Design* design, RTLIL::Cell* cell) {
+  RTLIL::IdString type = cell->type;
+  std::string typeName = type.str();
+  if(typeName.front() != '$' && design->modules_.find(type) != design->modules_.end())
+    return true;
+  else return false;
+}
+
+
+bool cell_is_bitAnd(Design* design, RTLIL::Cell* cell) {
+  RTLIL::IdString type = cell->type;
+  std::string typeName = type.str();
+  if(typeName.front() != '$' && design->modules_.find(type) != design->modules_.end())
+    return true;
+  else return false;
+}
+
+bool complete_signal(RTLIL::SigSpec sig) {
+  return !sig.is_chunk() && !sig.is_bit();
+}
+
+
+bool equal_width(RTLIL::SigSpec sig1, RTLIL::SigSpec sig2) {
+  return sig1.width == sig2.width;
+}
+
+
+RTLIL::SigSpec get_cell_port(RTLIL::SigSpec sig, RTLIL::Cell *cell) {
+  for(auto pair : cell->connections_) {
+    auto portId = pair.first;
+    auto connSig = pair.second;
+    // only consider one case here:
+    // 1. port and sig are perfectly connected
+    assert(complete_signal(connSig));
+    assert(complete_signal(sig));
+    if(connSig == sig) return cell->getPort(portId);
+  }
+  return RTLIL::SigSpec();
+}
+
+
+RTLIL::Module* get_subModule(Design* design, RTLIL::Cell* cell) {
+  return design->modules_[cell->type];
+}
+
+
+RTLIL::SigSpec get_sigspec(RTLIL::Module* module, 
+                           std::string inputName, int offset, int length) {
+  for(auto pair: module->wires_) {
+    auto id = pair.first;
+    auto wire = pair.second;
+    if(wire.name.str() == inputName) {
+      return wire.extract(offset, length);
+    }
+  }
+}
+
+
+std::string get_path(const std::vector<RTLIL::Cell*> &cell_stack = g_cell_stack) {
+  std::string path;
+  bool first = true;
+  for(cell: cell_stack) {
+    if(first) {
+      path = cell->name.str();
+      first = false;
+    }
+    else {
+      path += "." + cell->name.str();
+    }
+  }
+  return path;
+}
+
+
+std::string get_hier_name(RTLIL::SigSpec inputSig) {
+  assert(!inputSig.is_chunk());
+  assert(!inputSig.is_bit());
+  std::string path = get_path();
+  auto wireName = inputSig.as_wire()->name.str();
+  return path + "." + wireName;
+}
+
+
+bool get_bit(uint32_t value, uint32_t pos) {
+  assert(pos < 32);
+  int bitVal = (value & (1 << pos));
+  return bitVal > 0;
+}
+
+
+void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
+  inputSig.unpack();
+  int pos = 0;
+  std::string inputName = get_hier_name(inputSig);
+  bool first = true;
+  expr disjunct;
+  for(auto bit: inputSig.bits_) {
+    std::string bitName = inputName + ".bit" + toStr(pos);
+    expr x = c.bool_const(bitName);
+    bool val = get_bit(forbidValue, pos++);
+    if(first) {
+      first = false;
+      disjunct = (x != val);
+    }
+    else {
+      disjunct = disjunct || (x != val);
+    }
+  }
+  s.add(disjunct);
+}
+
+
+
+void traverse(Design* design, RTLIL::Module* module)
+{
+    std::cout << "=== Begin a new module:"  << std::endl;
+    print_module(module);
+    // traverse all cells
+    for(auto cellPair : module->cells_) {
+      RTLIL::IdString IdStr = cellPair.first;
+      RTLIL::Cell* cell = cellPair.second;
+      print_module(cell->module);
+      print_cell(cell);
+      bool use_ctrd_sig = false;
+      bool use_forbid_value = false;
+      RTLIL::SigSpec outputWire;
+      RTLIL::IdString outputPort;
+      for(auto &conn: cell->connections_) {
+        RTLIL::IdString port = conn.first;
+        RTLIL::SigSpec connSig = conn.second;
+        print_sigspec(connSig);
+      }
+    }
+}
