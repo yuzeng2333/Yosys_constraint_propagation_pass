@@ -20,22 +20,8 @@
  *
  */
 
+#include "ctrd_prop.h"
 
-#include "kernel/register.h"
-#include "kernel/celltypes.h"
-#include "kernel/log.h"
-#include "kernel/sigtools.h"
-#include "kernel/ff.h"
-#include "kernel/mem.h"
-#include "kernel/rtlil.h"
-#include <string>
-#include <sstream>
-#include <set>
-#include <map>
-#include <vector>
-#include <queue>
-#include <assert.h>
-#include <z3++.h>
 #include "util.cc"
 
 using namespace z3;

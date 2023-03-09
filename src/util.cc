@@ -1,20 +1,9 @@
-#include "kernel/register.h"
-#include "kernel/celltypes.h"
-#include "kernel/log.h"
-#include "kernel/sigtools.h"
-#include "kernel/ff.h"
-#include "kernel/mem.h"
-#include "kernel/rtlil.h"
-#include <string>
-#include <sstream>
-#include <set>
-#include <map>
-#include <vector>
-#include <queue>
-#include <assert.h>
-#include <z3++.h>
+#include "ctrd_prop.h"
 
 using namespace z3;
+
+USING_YOSYS_NAMESPACE
+PRIVATE_NAMESPACE_BEGIN
 
 /// utils
 std::string toStr(int i) {
@@ -71,7 +60,7 @@ bool complete_signal(RTLIL::SigSpec sig) {
 
 
 bool equal_width(RTLIL::SigSpec sig1, RTLIL::SigSpec sig2) {
-  return sig1.width == sig2.width;
+  return sig1.size() == sig2.size();
 }
 
 
@@ -99,8 +88,8 @@ RTLIL::SigSpec get_sigspec(RTLIL::Module* module,
   for(auto pair: module->wires_) {
     auto id = pair.first;
     auto wire = pair.second;
-    if(wire.name.str() == inputName) {
-      return wire.extract(offset, length);
+    if(wire->name.str() == inputName) {
+      return wire->extract(offset, length);
     }
   }
 }
@@ -144,7 +133,7 @@ bool get_bit(uint32_t value, uint32_t pos) {
 void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
   assert(complete_signal(inputSig));
   std::string inputName = get_hier_name(inputSig);
-  int width = inputSig.width_;
+  int width = inputSig.size();
   expr inputExpr;
   if(g_expr_map.find(inputName) != g_expr_map.end()) {
     inputExpr = g_expr_map[inputName];
@@ -203,7 +192,7 @@ void traverse(Design* design, RTLIL::Module* module)
 
 
 expr get_expr(Context &c, RTLIL::SigSpec sig) {
-  int width = sig.width_;
+  int width = sig.size();
   std::string name = get_hier_name(sig);  
   if(sig.is_wire()) {
     if(g_expr_map.find(name) != g_expr_map.end())
@@ -222,10 +211,12 @@ expr get_expr(Context &c, RTLIL::SigSpec sig) {
       return completeExpr.extract(width+offset-1, offset);
     }
     else {
-      int fullWidth = sig->wire->width;
+      int fullWidth = sig->wire->size();
       expr ret = c.bv_const(name, fullWidth);
       g_expr_map.emplace(name, ret);
       return ret.extract(width+offset-1, offset);
     }
   }
 }
+
+PRIVATE_NAMESPACE_END
