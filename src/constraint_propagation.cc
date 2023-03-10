@@ -160,20 +160,21 @@ void propagate_constraints(solver &s, context &c, Design* design, RTLIL::Module*
 }
 
 
-void simplify(solver &s) {
+void simplify(solver &s, context &c) {
   for(auto set: g_check_vec) {
-    std::string path = set.path
+    std::string path = set.path;
     auto cell = set.cell;
     RTLIL::SigSpec outSig = set.outSig;
     RTLIL::SigSpec ctrdSig = set.ctrdSig;
+    auto module = cell->module;
     int forbidValue = set.forbidValue;
-    expr outExpr = get_expr(outSig, path);
-    expr ctrdExpr = get_expr(ctrdSig, path);
+    expr outExpr = get_expr(c, outSig, path);
+    expr ctrdExpr = get_expr(c, ctrdSig, path);
     s.push();
-    s.add(outExpr == (ctrdExpr == forbidValue);
+    s.add(outExpr == (ctrdExpr == forbidValue));
     if(s.check() == unsat) {
       module->remove(cell);
-      module->connect(outputSig, RTLIL::SigSpec(false));
+      module->connect(outSig, RTLIL::SigSpec(false));
     }
     s.pop();
   }
@@ -197,7 +198,7 @@ struct ConstraintPropagatePass : public Pass {
       RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
       add_neq_ctrd(s, c, inputSig, forbidValue);
       propagate_constraints(s, c, design, module, inputSig, forbidValue);
-      simplify(solver &s);
+      simplify(s, c);
       //traverse(design, module);
     }
   }

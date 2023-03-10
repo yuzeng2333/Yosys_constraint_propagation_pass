@@ -187,7 +187,7 @@ void traverse(Design* design, RTLIL::Module* module)
 }
 
 
-expr get_expr(context &c, RTLIL::SigSpec sig, std::string path="") {
+expr get_expr(context &c, RTLIL::SigSpec sig, std::string path) {
   int width = sig.size();
   std::string name;
   if(path.empty()) name = get_hier_name(sig);  
@@ -196,7 +196,7 @@ expr get_expr(context &c, RTLIL::SigSpec sig, std::string path="") {
     if(g_expr_map.find(name) != g_expr_map.end())
       return *g_expr_map[name];
     else {
-      expr ret = c.bv_const(name.c_str(), width);
+      expr ret = width > 1 ? c.bv_const(name.c_str(), width) : c.bool_const(name.c_str());
       g_expr_map.emplace(name, &ret);
       return ret;
     }
@@ -210,7 +210,7 @@ expr get_expr(context &c, RTLIL::SigSpec sig, std::string path="") {
     }
     else {
       int fullWidth = sig.size();
-      expr ret = c.bv_const(name.c_str(), fullWidth);
+      expr ret = width > 1 ? c.bv_const(name.c_str(), fullWidth) : c.bool_const(name.c_str());
       g_expr_map.emplace(name, &ret);
       return ret.extract(width+offset-1, offset);
     }
