@@ -21,44 +21,17 @@
  */
 
 #include "ctrd_prop.h"
-
-#include "util.cc"
+#include "util.h"
 
 using namespace z3;
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
 
-struct WorkItem {
-  std::string sigName;
-  int offset;
-  int length;
-  uint32_t forbidValue;
-};
-
-
-struct CheckSet {
-  std::string path;
-  RTLIL::Cell* cell;
-  RTLIL::SigSpec ctrdSig;
-  int forbidValue;
-};
-
-
-struct DestGroup {
-  std::set<RTLIL::SigSpec> wires;
-  std::set<std::pair<RTLIL:Cell*, RTLIL::SigSpec>> cellPorts;
-};
-
-std::queue<WorkItem> g_work_list;
-std::vector<RTLIL::Cell*> g_cell_stack;
-std::set<CheckSet> g_check_set;
-std::map<std::string, expr> g_expr_map;
-typedef std::map<RTLIL::SigSpec, DestGroup> DriveMap_t;
 
 void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
   std::string path = get_path();
-  g_check_set.insert(struct CheckSet{path, cell, ctrdSig, forbidValue});
+  g_check_vec.push_back(CheckSet{path, cell, ctrdSig, forbidValue});
 }
 
 void simplify_eq(solver &s, context &c, RTLIL::Module* module, 
@@ -126,8 +99,8 @@ void add_and(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module
   }
   if(const_arg) {
     assert(equal_width(ctrdSig, outputConnSig));
-    expr ctrdExpr = get_hier_name(ctrdSig);
-    expr outExpr = get_hier_name(outputConnSig);
+    expr ctrdExpr = get_expr(c, ctrdSig);
+    expr outExpr = get_expr(c, outputConnSig);
     s.add(ctrdExpr & const_value == outExpr);
   }
 }
@@ -137,56 +110,55 @@ void propagate_constraints(solver &s, context &c, Design* design, RTLIL::Module*
                            RTLIL::SigSpec ctrdSig, uint32_t forbidValue)
                            //std::string ctrdSig, int offset, int length, uint32_t forbidValue)
 {
-    // traverse all connections
-    //for(auto &conn : module->connections()) {
-    //  auto srcSig = conn.first;
-    //  //RTLIL::IdString srcName = srcSig.as_wire()->name;
-    //  //if(ctdSig != srcSig) continue;
-    //  auto dstSig = conn.second;
-    //  if(dstSig.is_wire()) {
-    //    g_work_list.push(std::make_pair(dstSig, forbidValue));
-    //  }
-    //}
-    std::cout << "=== Begin a new module:"  << std::endl;
-    print_module(module);
-    // traverse all cells
-    for(auto cellPair : module->cells_) {
-      RTLIL::IdString cellId = cellPair.first;
-      RTLIL::Cell* cell = cellPair.second;
-      print_module(cell->module);
-      if(cell->type == ID($eq)) 
-        collect_eq(cell, ctrdSig, forbidValue);
-      else if(cell_is_module(design, cell))
-        add_submod(s, c, design, module, cell, ctrdSig, forbidValue);
-      else if(cell->type == ID($and))
-        add_and(s, c, design, module, cell, ctrdSig, forbidValue);
-    }
+  // traverse all connections
+  //for(auto &conn : module->connections()) {
+  //  auto srcSig = conn.first;
+  //  //RTLIL::IdString srcName = srcSig.as_wire()->name;
+  //  //if(ctdSig != srcSig) continue;
+  //  auto dstSig = conn.second;
+  //  if(dstSig.is_wire()) {
+  //    g_work_list.push(std::make_pair(dstSig, forbidValue));
+  //  }
+  //}
+  std::cout << "=== Begin a new module:"  << std::endl;
+  print_module(module);
+  // traverse all cells
+  for(auto cellPair : module->cells_) {
+    RTLIL::IdString cellId = cellPair.first;
+    RTLIL::Cell* cell = cellPair.second;
+    print_module(cell->module);
+    if(cell->type == ID($eq)) 
+      collect_eq(cell, ctrdSig, forbidValue);
+    else if(cell_is_module(design, cell))
+      add_submod(s, c, design, module, cell, ctrdSig, forbidValue);
+    else if(cell->type == ID($and))
+      add_and(s, c, design, module, cell, ctrdSig, forbidValue);
+  }
 }
 
 
 
 struct ConstraintPropagatePass : public Pass {
-    ConstraintPropagatePass() : Pass("opt_ctrd", "constraint propagation pass") { }
-    void execute(std::vector<std::string>, Design* design) override { 
-        log_header(design, "Executing the new OPT_CONSTRAINT pass\n");
+  ConstraintPropagatePass() : Pass("opt_ctrd", "constraint propagation pass") { }
+  void execute(std::vector<std::string>, Design* design) override { 
+    log_header(design, "Executing the new OPT_CONSTRAINT pass\n");
+    context c;
+    solver s(c);
+    // Iterate through all modules in the design
+    for (auto module : design->modules())
+    {
+      // Recursively propagate constants through the module
+      std::string inputName = "\\io_opcode";
+      int shift = 0;
+      int length = 8;
+      uint32_t forbidValue = 1;
+      RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
+      add_neq_ctrd(s, c, inputSig, forbidValue);
+      propagate_constraints(s, c, design, module, inputSig, forbidValue);
 
-        context c;
-        solver s;
-        // Iterate through all modules in the design
-        for (auto module : design->modules())
-        {
-            // Recursively propagate constants through the module
-            std::string inputName = "\\io_opcode";
-            int shift = 0;
-            int length = 8;
-            uint32_t forbidValue = 1;
-            RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
-            add_neq_ctrd(s, c, inputSig, forbidValue);
-            propagate_constraints(s, c, design, module, inputSig, forbidValue);
-
-            //traverse(design, module);
-        }
+      //traverse(design, module);
     }
+  }
 } ConstraintPropagatePass;
 
 

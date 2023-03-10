@@ -89,7 +89,7 @@ RTLIL::SigSpec get_sigspec(RTLIL::Module* module,
     auto id = pair.first;
     auto wire = pair.second;
     if(wire->name.str() == inputName) {
-      return wire->extract(offset, length);
+      return RTLIL::SigSpec(wire, offset, length);
     }
   }
 }
@@ -98,7 +98,7 @@ RTLIL::SigSpec get_sigspec(RTLIL::Module* module,
 std::string get_path(const std::vector<RTLIL::Cell*> &cell_stack = g_cell_stack) {
   std::string path;
   bool first = true;
-  for(cell: cell_stack) {
+  for(auto cell: cell_stack) {
     if(first) {
       path = cell->name.str();
       first = false;
@@ -114,11 +114,8 @@ std::string get_path(const std::vector<RTLIL::Cell*> &cell_stack = g_cell_stack)
 std::string get_hier_name(RTLIL::SigSpec inputSig) {
   assert(!inputSig.is_bit());
   std::string path = get_path();
-  auto wireName;
-  if(inputSig.is_wire())
-    wireName = inputSig.as_wire()->name.str();
-  else if(inputSig.is_chunk()) 
-    wireName = inputSig.as_chunk()->name.str();
+  std::string wireName;
+  wireName = inputSig.as_wire()->name.str();
   return path + "." + wireName;
 }
 
@@ -130,76 +127,75 @@ bool get_bit(uint32_t value, uint32_t pos) {
 }
 
 
-void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
+void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, int forbidValue) {
   assert(complete_signal(inputSig));
   std::string inputName = get_hier_name(inputSig);
   int width = inputSig.size();
-  expr inputExpr;
-  if(g_expr_map.find(inputName) != g_expr_map.end()) {
-    inputExpr = g_expr_map[inputName];
-  }
-  else {
-    inputExpr = c.bv_const(inputName, width);
-  }
-  expr neq = inputExpr != forbidValue;
-  s.add(neq);
+  //if(g_expr_map.find(inputName) != g_expr_map.end()) {
+  //  expr inputExpr = g_expr_map[inputName];
+  //  s.add(inputExpr != forbidValue);
+  //}
+  //else {
+    expr inputExpr = c.bv_const(inputName.c_str(), width);
+    s.add(inputExpr != forbidValue);
+  //}
 }
 
 
-void add_neq_bits_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
-  inputSig.unpack();
-  int pos = 0;
-  std::string inputName = get_hier_name(inputSig);
-  bool first = true;
-  expr disjunct;
-  for(auto bit: inputSig.bits_) {
-    std::string bitName = inputName + ".bit" + toStr(pos);
-    expr x = c.bool_const(bitName);
-    bool val = get_bit(forbidValue, pos++);
-    if(first) {
-      first = false;
-      disjunct = (x != val);
-    }
-    else {
-      disjunct = disjunct || (x != val);
-    }
-  }
-  s.add(disjunct);
-}
+//void add_neq_bits_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, uint32_t forbidValue) {
+//  inputSig.unpack();
+//  int pos = 0;
+//  std::string inputName = get_hier_name(inputSig);
+//  bool first = true;
+//  expr disjunct;
+//  for(auto bit: inputSig.bits_) {
+//    std::string bitName = inputName + ".bit" + toStr(pos);
+//    expr x = c.bool_const(bitName);
+//    bool val = get_bit(forbidValue, pos++);
+//    if(first) {
+//      first = false;
+//      disjunct = (x != val);
+//    }
+//    else {
+//      disjunct = disjunct || (x != val);
+//    }
+//  }
+//  s.add(disjunct);
+//}
 
 
 void traverse(Design* design, RTLIL::Module* module)
 {
-    std::cout << "=== Begin a new module:"  << std::endl;
-    print_module(module);
-    // traverse all cells
-    for(auto cellPair : module->cells_) {
-      RTLIL::IdString IdStr = cellPair.first;
-      RTLIL::Cell* cell = cellPair.second;
-      print_module(cell->module);
-      print_cell(cell);
-      bool use_ctrd_sig = false;
-      bool use_forbid_value = false;
-      RTLIL::SigSpec outputWire;
-      RTLIL::IdString outputPort;
-      for(auto &conn: cell->connections_) {
-        RTLIL::IdString port = conn.first;
-        RTLIL::SigSpec connSig = conn.second;
-        print_sigspec(connSig);
-      }
+  std::cout << "=== Begin a new module:"  << std::endl;
+  print_module(module);
+  // traverse all cells
+  for(auto cellPair : module->cells_) {
+    RTLIL::IdString IdStr = cellPair.first;
+    RTLIL::Cell* cell = cellPair.second;
+    print_module(cell->module);
+    print_cell(cell);
+    bool use_ctrd_sig = false;
+    bool use_forbid_value = false;
+    RTLIL::SigSpec outputWire;
+    RTLIL::IdString outputPort;
+    for(auto &conn: cell->connections_) {
+      RTLIL::IdString port = conn.first;
+      RTLIL::SigSpec connSig = conn.second;
+      print_sigspec(connSig);
     }
+  }
 }
 
 
-expr get_expr(Context &c, RTLIL::SigSpec sig) {
+expr get_expr(context &c, RTLIL::SigSpec sig) {
   int width = sig.size();
   std::string name = get_hier_name(sig);  
   if(sig.is_wire()) {
     if(g_expr_map.find(name) != g_expr_map.end())
-      return g_expr_map[name];
+      return *g_expr_map[name];
     else {
-      expr ret = c.bv_const(name, width);
-      g_expr_map.emplace(name, ret);
+      expr ret = c.bv_const(name.c_str(), width);
+      g_expr_map.emplace(name, &ret);
       return ret;
     }
   }
@@ -207,13 +203,13 @@ expr get_expr(Context &c, RTLIL::SigSpec sig) {
     auto chunk = sig.as_chunk();
     int offset = chunk.offset;
     if(g_expr_map.find(name) != g_expr_map.end()) {
-      expr completeExpr = g_expr_map[name];
-      return completeExpr.extract(width+offset-1, offset);
+      expr* completeExpr = g_expr_map[name];
+      return completeExpr->extract(width+offset-1, offset);
     }
     else {
-      int fullWidth = sig->wire->size();
-      expr ret = c.bv_const(name, fullWidth);
-      g_expr_map.emplace(name, ret);
+      int fullWidth = sig.size();
+      expr ret = c.bv_const(name.c_str(), fullWidth);
+      g_expr_map.emplace(name, &ret);
       return ret.extract(width+offset-1, offset);
     }
   }
