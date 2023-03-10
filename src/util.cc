@@ -187,9 +187,11 @@ void traverse(Design* design, RTLIL::Module* module)
 }
 
 
-expr get_expr(context &c, RTLIL::SigSpec sig) {
+expr get_expr(context &c, RTLIL::SigSpec sig, std::string path="") {
   int width = sig.size();
-  std::string name = get_hier_name(sig);  
+  std::string name;
+  if(path.empty()) name = get_hier_name(sig);  
+  else name = sig.as_wire()->name.str();
   if(sig.is_wire()) {
     if(g_expr_map.find(name) != g_expr_map.end())
       return *g_expr_map[name];

@@ -30,9 +30,32 @@ PRIVATE_NAMESPACE_BEGIN
 
 
 void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
-  std::string path = get_path();
-  g_check_vec.push_back(CheckSet{path, cell, ctrdSig, forbidValue});
+  bool use_ctrd_sig = false;
+  bool use_forbid_value = false;
+  RTLIL::SigSpec outputWire;
+  for(auto &conn: cell->connections_) {
+    RTLIL::IdString port = conn.first;
+    RTLIL::SigSpec connSig = conn.second;
+    if(cell->input(port)) {
+      if(connSig.is_wire() && connSig == ctrdSig) {
+        use_ctrd_sig = true;
+      }
+      else if(connSig.is_fully_const()) {
+        int eqValue = connSig.as_int();
+        use_forbid_value = eqValue == forbidValue;
+      }
+    }
+    else {
+      assert(cell->output(port));
+      outputWire = connSig;
+    }
+  }
+  if(use_ctrd_sig && use_forbid_value) {
+    std::string path = get_path();
+    g_check_vec.push_back(CheckSet{path, cell, outputWire, ctrdSig, forbidValue});
+  }
 }
+
 
 void simplify_eq(solver &s, context &c, RTLIL::Module* module, 
                  RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
@@ -137,6 +160,25 @@ void propagate_constraints(solver &s, context &c, Design* design, RTLIL::Module*
 }
 
 
+void simplify(solver &s) {
+  for(auto set: g_check_vec) {
+    std::string path = set.path
+    auto cell = set.cell;
+    RTLIL::SigSpec outSig = set.outSig;
+    RTLIL::SigSpec ctrdSig = set.ctrdSig;
+    int forbidValue = set.forbidValue;
+    expr outExpr = get_expr(outSig, path);
+    expr ctrdExpr = get_expr(ctrdSig, path);
+    s.push();
+    s.add(outExpr == (ctrdExpr == forbidValue);
+    if(s.check() == unsat) {
+      module->remove(cell);
+      module->connect(outputSig, RTLIL::SigSpec(false));
+    }
+    s.pop();
+  }
+}
+
 
 struct ConstraintPropagatePass : public Pass {
   ConstraintPropagatePass() : Pass("opt_ctrd", "constraint propagation pass") { }
@@ -155,7 +197,7 @@ struct ConstraintPropagatePass : public Pass {
       RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
       add_neq_ctrd(s, c, inputSig, forbidValue);
       propagate_constraints(s, c, design, module, inputSig, forbidValue);
-
+      simplify(solver &s);
       //traverse(design, module);
     }
   }
