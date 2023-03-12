@@ -1,0 +1,7 @@
+read_verilog test.v
+
+prep -top test
+hierarchy -check
+proc
+traverse
+write_verilog -nodec -noattr test_opt.v

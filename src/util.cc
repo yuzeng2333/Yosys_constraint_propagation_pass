@@ -164,8 +164,7 @@ void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, int forbidValu
 //}
 
 
-void traverse(Design* design, RTLIL::Module* module)
-{
+void traverse(Design* design, RTLIL::Module* module) {
   std::cout << "=== Begin a new module:"  << std::endl;
   print_module(module);
   // traverse all cells

@@ -202,4 +202,16 @@ struct ConstraintPropagatePass : public Pass {
 } ConstraintPropagatePass;
 
 
+struct TraversePass : public Pass {
+  TraversePass() : Pass("traverse", "Traverse the circuit") { }
+  void execute(std::vector<std::string>, Design* design) override { 
+    log_header(design, "Traverse the circuit\n");
+    // Iterate through all modules in the design
+    RTLIL::Module* module = design->top_module();
+    // Recursively propagate constants through the module
+    traverse(design, module);
+  }
+} TraversePass;
+
+
 PRIVATE_NAMESPACE_END
