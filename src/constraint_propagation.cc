@@ -29,9 +29,10 @@ USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
 
 
-void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
+void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig) {
   bool use_ctrd_sig = false;
-  bool use_forbid_value = false;
+  bool use_const = false;
+  int constValue;
   RTLIL::SigSpec outputWire;
   for(auto &conn: cell->connections_) {
     RTLIL::IdString port = conn.first;
@@ -41,8 +42,8 @@ void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
         use_ctrd_sig = true;
       }
       else if(connSig.is_fully_const()) {
-        int eqValue = connSig.as_int();
-        use_forbid_value = eqValue == forbidValue;
+        use_const = true;
+        constValue = connSig.as_int();
       }
     }
     else {
@@ -50,9 +51,9 @@ void collect_eq(RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
       outputWire = connSig;
     }
   }
-  if(use_ctrd_sig && use_forbid_value) {
+  if(use_ctrd_sig && use_const) {
     std::string path = get_path();
-    g_check_vec.push_back(CheckSet{path, cell, outputWire, ctrdSig, forbidValue});
+    g_check_vec.push_back(CheckSet{path, cell, outputWire, ctrdSig, constValue});
   }
 }
 
@@ -94,16 +95,18 @@ void simplify_eq(solver &s, context &c, RTLIL::Module* module,
 
 
 void add_submod(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module, 
-                     RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
+                RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig) {
    RTLIL::SigSpec port = get_cell_port(ctrdSig, cell);
    if(port.empty()) return;
    auto subMod = get_subModule(design, cell);
-   propagate_constraints(s, c, design, subMod, port, forbidValue);
+   DriveMap_t mp;
+   get_drive_map(subMod, mp);
+   propagate_constraints(s, c, design, subMod, mp, port);
 }
 
 
 void add_and(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module, 
-             RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig, int forbidValue) {
+             DriveMap_t &mp, RTLIL::Cell* cell, RTLIL::SigSpec ctrdSig) {
   RTLIL::SigSpec port = get_cell_port(ctrdSig, cell);
   if(port.empty()) return;
   RTLIL::SigSpec outputConnSig;
@@ -125,12 +128,29 @@ void add_and(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module
     expr ctrdExpr = get_expr(c, ctrdSig);
     expr outExpr = get_expr(c, outputConnSig);
     s.add((ctrdExpr & const_value) == outExpr);
+    propagate_constraints(s, c, design, module, mp, outputConnSig);
   }
 }
 
+
+void get_drive_map(RTLIL::Module* module, DriveMap_t &mp) {
+  for(auto cellPair: module->cells_) {
+    RTLIL::Cell* cell = cellPair.second;
+    for(auto pair: cell->connections_) {
+      auto portId = pair.first;
+      auto connSig = pair.second;
+      if(mp.find(connSig) == mp.end())
+        mp.emplace(connSig, DestGroup{std::set<RTLIL::SigSpec>{}, std::set<RTLIL::Cell*>{cell}});
+      else
+        mp[connSig].cells.insert(cell);
+    }
+  }
+}
+
+
 /// Recursively propagate constraints through the design
 void propagate_constraints(solver &s, context &c, Design* design, RTLIL::Module* module, 
-                           RTLIL::SigSpec ctrdSig, uint32_t forbidValue)
+                           DriveMap_t &mp, RTLIL::SigSpec ctrdSig)
                            //std::string ctrdSig, int offset, int length, uint32_t forbidValue)
 {
   // traverse all connections
@@ -146,16 +166,19 @@ void propagate_constraints(solver &s, context &c, Design* design, RTLIL::Module*
   std::cout << "=== Begin a new module:"  << std::endl;
   print_module(module);
   // traverse all cells
-  for(auto cellPair : module->cells_) {
-    RTLIL::IdString cellId = cellPair.first;
-    RTLIL::Cell* cell = cellPair.second;
+  assert(mp.find(ctrdSig) != mp.end());
+  const auto group = mp[ctrdSig];
+  assert(group.wires.empty());
+  auto connectedCells = group.cells;
+
+  for(auto cell: connectedCells) {
     print_module(cell->module);
     if(cell->type == ID($eq)) 
-      collect_eq(cell, ctrdSig, forbidValue);
+      collect_eq(cell, ctrdSig);
     else if(cell_is_module(design, cell))
-      add_submod(s, c, design, module, cell, ctrdSig, forbidValue);
+      add_submod(s, c, design, module, cell, ctrdSig);
     else if(cell->type == ID($and))
-      add_and(s, c, design, module, cell, ctrdSig, forbidValue);
+      add_and(s, c, design, module, mp, cell, ctrdSig);
   }
 }
 
@@ -196,22 +219,12 @@ struct ConstraintPropagatePass : public Pass {
     uint32_t forbidValue = 1;
     RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
     add_neq_ctrd(s, c, inputSig, forbidValue);
-    propagate_constraints(s, c, design, module, inputSig, forbidValue);
+    DriveMap_t mp;
+    get_drive_map(module, mp);
+    propagate_constraints(s, c, design, module, mp, inputSig);
     simplify(s, c);
   }
 } ConstraintPropagatePass;
-
-
-struct TraversePass : public Pass {
-  TraversePass() : Pass("traverse", "Traverse the circuit") { }
-  void execute(std::vector<std::string>, Design* design) override { 
-    log_header(design, "Traverse the circuit\n");
-    // Iterate through all modules in the design
-    RTLIL::Module* module = design->top_module();
-    // Recursively propagate constants through the module
-    traverse(design, module);
-  }
-} TraversePass;
 
 
 PRIVATE_NAMESPACE_END

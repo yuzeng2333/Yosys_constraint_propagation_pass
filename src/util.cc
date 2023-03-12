@@ -164,28 +164,6 @@ void add_neq_ctrd(solver &s, context &c, RTLIL::SigSpec inputSig, int forbidValu
 //}
 
 
-void traverse(Design* design, RTLIL::Module* module) {
-  std::cout << "=== Begin a new module:"  << std::endl;
-  print_module(module);
-  // traverse all cells
-  for(auto cellPair : module->cells_) {
-    RTLIL::IdString IdStr = cellPair.first;
-    RTLIL::Cell* cell = cellPair.second;
-    print_module(cell->module);
-    print_cell(cell);
-    bool use_ctrd_sig = false;
-    bool use_forbid_value = false;
-    RTLIL::SigSpec outputWire;
-    RTLIL::IdString outputPort;
-    for(auto &conn: cell->connections_) {
-      RTLIL::IdString port = conn.first;
-      RTLIL::SigSpec connSig = conn.second;
-      print_sigspec(connSig);
-    }
-  }
-}
-
-
 expr get_expr(context &c, RTLIL::SigSpec sig, std::string path) {
   int width = sig.size();
   std::string name;
@@ -212,6 +190,28 @@ expr get_expr(context &c, RTLIL::SigSpec sig, std::string path) {
       expr ret = width > 1 ? c.bv_const(name.c_str(), fullWidth) : c.bool_const(name.c_str());
       g_expr_map.emplace(name, &ret);
       return ret.extract(width+offset-1, offset);
+    }
+  }
+}
+
+
+void traverse(Design* design, RTLIL::Module* module) {
+  std::cout << "=== Begin a new module:"  << std::endl;
+  print_module(module);
+  // traverse all cells
+  for(auto cellPair : module->cells_) {
+    RTLIL::IdString IdStr = cellPair.first;
+    RTLIL::Cell* cell = cellPair.second;
+    print_module(cell->module);
+    print_cell(cell);
+    bool use_ctrd_sig = false;
+    bool use_forbid_value = false;
+    RTLIL::SigSpec outputWire;
+    RTLIL::IdString outputPort;
+    for(auto &conn: cell->connections_) {
+      RTLIL::IdString port = conn.first;
+      RTLIL::SigSpec connSig = conn.second;
+      print_sigspec(connSig);
     }
   }
 }
