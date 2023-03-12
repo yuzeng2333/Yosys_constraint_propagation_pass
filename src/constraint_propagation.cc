@@ -124,7 +124,7 @@ void add_and(solver &s, context &c, RTLIL::Design* design, RTLIL::Module* module
     assert(equal_width(ctrdSig, outputConnSig));
     expr ctrdExpr = get_expr(c, ctrdSig);
     expr outExpr = get_expr(c, outputConnSig);
-    s.add(ctrdExpr & const_value == outExpr);
+    s.add((ctrdExpr & const_value) == outExpr);
   }
 }
 
@@ -188,19 +188,16 @@ struct ConstraintPropagatePass : public Pass {
     context c;
     solver s(c);
     // Iterate through all modules in the design
-    for (auto module : design->modules())
-    {
-      // Recursively propagate constants through the module
-      std::string inputName = "\\io_opcode";
-      int shift = 0;
-      int length = 8;
-      uint32_t forbidValue = 1;
-      RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
-      add_neq_ctrd(s, c, inputSig, forbidValue);
-      propagate_constraints(s, c, design, module, inputSig, forbidValue);
-      simplify(s, c);
-      //traverse(design, module);
-    }
+    RTLIL::Module* module = design->top_module();
+    // Recursively propagate constants through the module
+    std::string inputName = "\\io_opcode";
+    int shift = 0;
+    int length = 8;
+    uint32_t forbidValue = 1;
+    RTLIL::SigSpec inputSig = get_sigspec(module, inputName, shift, length);
+    add_neq_ctrd(s, c, inputSig, forbidValue);
+    propagate_constraints(s, c, design, module, inputSig, forbidValue);
+    simplify(s, c);
   }
 } ConstraintPropagatePass;
 
